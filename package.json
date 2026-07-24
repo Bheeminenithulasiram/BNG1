@@ -1,0 +1,30 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "workspaces": [
+    "artifacts/*",
+    "lib/*"
+  ],
+  "scripts": {
+    "dev": "node dev.js",
+    "build": "npm run build --workspace=@workspace/brand-generator && npm run build --workspace=@workspace/api-server",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck"
+  },
+  "private": true,
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@esbuild/win32-x64": "^0.27.3",
+    "@rollup/rollup-win32-x64-msvc": "^4.62.2",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.1",
+    "esbuild-windows-64": "^0.15.18",
+    "lightningcss-win32-x64-msvc": "^1.32.0",
+    "prettier": "^3.8.4",
+    "tsx": "^4.23.1",
+    "typescript": "~5.9.3"
+  }
+}

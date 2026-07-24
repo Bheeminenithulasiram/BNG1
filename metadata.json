@@ -1,0 +1,6 @@
+{
+  "name": "BrandGen",
+  "description": "AI-powered brand name generator and domain availability checker",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
