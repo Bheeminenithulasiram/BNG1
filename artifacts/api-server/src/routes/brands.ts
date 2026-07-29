@@ -253,14 +253,28 @@ router.post(["/brands/generate", "/api/brands/generate", "/generate"], async (re
   const effectiveKey = sanitizeGroqKey(bodyKey || headerKey || process.env.GROQ_API_KEY);
   const effectiveGeminiKey = (bodyGeminiKey || headerGeminiKey || process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 
-  const domainChecker = new DomainChecker(2000);
-
   async function checkPool(pool: BrandSuggestion[]) {
     return Promise.all(
-      pool.map(async (s) => ({
-        s,
-        status: await domainChecker.check(s.suggestedDomain),
-      })),
+      pool.map(async (s) => {
+        try {
+          const resp = await fetch(`https://cloudflare-dns.com/dns-query?name=${s.suggestedDomain}&type=A`, {
+            headers: { accept: "application/dns-json" },
+            signal: AbortSignal.timeout(1000),
+          });
+          if (resp.ok) {
+            const json: any = await resp.json();
+            if (json.Status === 3) {
+              return { s, status: "available" as const }; // NXDOMAIN -> Available
+            }
+            if (json.Status === 0 && json.Answer && json.Answer.length > 0) {
+              return { s, status: "taken" as const }; // Has active A record -> Taken
+            }
+          }
+        } catch {
+          // Ignore and default to available
+        }
+        return { s, status: "available" as const };
+      }),
     );
   }
 
