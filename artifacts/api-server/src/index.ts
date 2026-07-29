@@ -1,16 +1,26 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
+// ─── Environment validation ───────────────────────────────────────────────────
 const rawPort = process.env["PORT"] || "3000";
-const port = Number(rawPort) || 3000;
+const port = Number(rawPort);
 
+if (Number.isNaN(port) || port <= 0 || port > 65535) {
+  logger.error({ PORT: rawPort }, "Invalid PORT — must be a number between 1 and 65535");
+  process.exit(1);
+}
+
+if (!process.env.GROQ_API_KEY) {
+  logger.warn(
+    "GROQ_API_KEY is not set — brand generation will use the local fallback mode. " +
+      "Set GROQ_API_KEY in your environment or .env.local to enable AI-powered generation.",
+  );
+}
+
+// ─── Start server ─────────────────────────────────────────────────────────────
 if (!process.env.VERCEL) {
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-    } else {
-      logger.info({ port }, "Server listening");
-    }
+  app.listen(port, () => {
+    logger.info({ port, env: process.env.NODE_ENV ?? "development" }, "Server listening");
   });
 }
 
