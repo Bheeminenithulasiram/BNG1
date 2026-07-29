@@ -292,6 +292,9 @@ Respond ONLY with a valid JSON array:
         if (!resp.ok) {
           const errText = await resp.text().catch(() => "");
           console.warn(`[BrandGen] Groq API response status (${resp.status}): ${errText}`);
+          try {
+            require("fs").writeFileSync("groq_error.log", `Status: ${resp.status}\nBody: ${errText}\n`);
+          } catch {}
           return [];
         }
 
@@ -313,8 +316,11 @@ Respond ONLY with a valid JSON array:
         }
         const parsedDirect = JSON.parse(cleaned);
         return Array.isArray(parsedDirect) ? parsedDirect : [];
-      } catch (err) {
+      } catch (err: any) {
         console.error("[BrandGen] Error calling Groq API:", err);
+        try {
+          require("fs").writeFileSync("groq_error.log", `Exception: ${err?.message || err}\n`);
+        } catch {}
         return [];
       }
     }
