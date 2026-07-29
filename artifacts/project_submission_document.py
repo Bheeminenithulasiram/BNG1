@@ -223,7 +223,33 @@ def main(output_path):
     
     # --- 11. Screenshots or Demo Video ---
     add_heading_1(doc, "11. Screenshots or Demo Video")
-    add_body(doc, "Refer to the live application at https://bng1.vercel.app to view the active generator dashboard, interactive chips, and checkmark validation flows.")
+    add_body(doc, "The following screenshots showcase the interface and validation functionality of the BrandGen web application:")
+    
+    import glob
+    import os
+    
+    artifact_dir = r"C:\Users\SARANYA ATREYAPURAPU\.gemini\antigravity-ide\brain\b1175263-549a-40b3-afbb-df0922cb5fc3"
+    
+    landing_images = glob.glob(os.path.join(artifact_dir, "landing_page_*.png"))
+    generated_images = glob.glob(os.path.join(artifact_dir, "generated_brands_*.png"))
+    details_images = glob.glob(os.path.join(artifact_dir, "brand_details_*.png"))
+    
+    if landing_images:
+        add_body(doc, "Figure 1: BrandGen Generator Form (Landing Page)", bold=True, space_after=2)
+        doc.add_picture(landing_images[0], width=Inches(5.5))
+        doc.add_paragraph().paragraph_format.space_after = Pt(12)
+        
+    if generated_images:
+        add_body(doc, "Figure 2: Generated Brand Name Candidates Grid (18 Suggestions in 80/20 Mix)", bold=True, space_after=2)
+        doc.add_picture(generated_images[0], width=Inches(5.5))
+        doc.add_paragraph().paragraph_format.space_after = Pt(12)
+        
+    if details_images:
+        add_body(doc, "Figure 3: Multi-Channel Availability Validation Panel for Chosen Brand", bold=True, space_after=2)
+        doc.add_picture(details_images[0], width=Inches(5.5))
+        doc.add_paragraph().paragraph_format.space_after = Pt(12)
+        
+    add_body(doc, "Walkthrough Video: The complete user flow is recorded in the 'brandgen_demo_flow_*.webp' video file included in the project directory.")
     
     # --- 12. Your Contribution to the Project ---
     add_heading_1(doc, "12. Your Contribution to the Project")
