@@ -203,22 +203,34 @@ export class InstagramChecker extends AvailabilityChecker {
       return "taken";
     }
 
-    // Attempt 1: Direct Instagram HTML inspection
+    // Attempt 1: Direct Instagram HTML inspection (with optional ScraperAPI or ZenRows proxy support)
     try {
-      const resp: any = await fetch(`https://www.instagram.com/${cleanUser}/`, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
+      const scraperKey = process.env.SCRAPERAPI_KEY;
+      const zenrowsKey = process.env.ZENROWS_API_KEY;
+      
+      let targetUrl = `https://www.instagram.com/${cleanUser}/`;
+      const headers: Record<string, string> = {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      };
+
+      if (scraperKey) {
+        targetUrl = `https://api.scraperapi.com?api_key=${scraperKey}&url=${encodeURIComponent(targetUrl)}`;
+      } else if (zenrowsKey) {
+        targetUrl = `https://api.zenrows.com/v1/?apikey=${zenrowsKey}&url=${encodeURIComponent(targetUrl)}`;
+      }
+
+      const resp: any = await fetch(targetUrl, {
+        headers,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
 
       if (resp.status === 404) return "available";
 
       if (resp.status === 200) {
-        if (resp.url && resp.url.includes("accounts/login")) {
+        if (resp.url && resp.url.includes("accounts/login") && !scraperKey && !zenrowsKey) {
           return "unknown"; // Blocked/redirected to login page
         }
         const text = await resp.text();
