@@ -36,7 +36,7 @@ export interface BrandAvailability {
   social: {
     instagram: AvailabilityStatus;
     twitter: AvailabilityStatus;
-    linkedin: AvailabilityStatus;
+    github: AvailabilityStatus;
   };
 }
 

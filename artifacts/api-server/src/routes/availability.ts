@@ -3,7 +3,7 @@ import { CheckBrandAvailabilityBody } from "@workspace/api-client-react";
 import {
   DomainChecker,
   XChecker,
-  LinkedInChecker,
+  GitHubChecker,
   InstagramChecker,
 } from "../services/availability";
 
@@ -23,19 +23,19 @@ router.post(["/brands/availability", "/api/brands/availability", "/availability"
   try {
     const domainChecker = new DomainChecker();
     const xChecker = new XChecker();
-    const linkedInChecker = new LinkedInChecker();
+    const githubChecker = new GitHubChecker();
     const instagramChecker = new InstagramChecker();
 
-    const [domainResult, twitter, linkedin, instagram] = await Promise.all([
+    const [domainResult, twitter, github, instagram] = await Promise.all([
       domainChecker.check(domain),
       xChecker.check(username),
-      linkedInChecker.check(username),
+      githubChecker.check(username),
       instagramChecker.check(username),
     ]);
 
     res.json({
       domain: { name: domain, status: domainResult },
-      social: { instagram, twitter, linkedin },
+      social: { instagram, twitter, github },
     });
   } catch (err) {
     req.log.error({ err }, "Availability check failed");

@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { useCheckBrandAvailability, type AvailabilityStatus } from "@workspace/api-client-react";
-import { Globe, Loader2, Check, X, Linkedin, HelpCircle } from "lucide-react";
+import { Globe, Loader2, Check, X, Github, HelpCircle } from "lucide-react";
 import { SiInstagram, SiX } from "react-icons/si";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,12 +28,12 @@ export default function BrandDetails({ brand }: { brand: BrandSuggestion }) {
   const data = checkAvailability.data;
   const handle = brand.name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Always show X, Instagram and LinkedIn, each with its availability status.
+  // Always show X, Instagram and GitHub, each with its availability status.
   const socials = data
     ? [
         { platform: "X", status: data.social.twitter, icon: <SiX className="w-5 h-5" /> },
         { platform: "Instagram", status: data.social.instagram, icon: <SiInstagram className="w-5 h-5" /> },
-        { platform: "LinkedIn", status: data.social.linkedin, icon: <Linkedin className="w-5 h-5" /> },
+        { platform: "GitHub", status: data.social.github, icon: <Github className="w-5 h-5" /> },
       ]
     : [];
   const domainStatus: AvailabilityStatus = data?.domain.status ?? "unknown";
