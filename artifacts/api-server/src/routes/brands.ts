@@ -220,6 +220,21 @@ router.post(["/brands/generate", "/api/brands/generate", "/generate"], async (re
   const headerKey = (req.headers["x-groq-api-key"] as string) || "";
   const effectiveKey = sanitizeGroqKey(bodyKey || headerKey || process.env.GROQ_API_KEY);
 
+  const domainChecker = new DomainChecker(2000);
+
+  async function checkPool(pool: BrandSuggestion[]) {
+    return Promise.all(
+      pool.map(async (s) => ({
+        s,
+        status: await domainChecker.check(s.suggestedDomain),
+      })),
+    );
+  }
+
+  const TARGET_TOTAL = 18;
+  const TARGET_AVAILABLE = 14;
+  const TARGET_TAKEN = 4;
+
   try {
     function buildPrompt(count: number, excludeNames: string[] = []): string {
       const excludeClause = excludeNames.length
@@ -302,24 +317,9 @@ Respond ONLY with a valid JSON array:
       }
     }
 
-    const domainChecker = new DomainChecker(2000);
-
-    async function checkPool(pool: BrandSuggestion[]) {
-      return Promise.all(
-        pool.map(async (s) => ({
-          s,
-          status: await domainChecker.check(s.suggestedDomain),
-        })),
-      );
-    }
-
     const availablePool: BrandSuggestion[] = [];
     const takenPool: BrandSuggestion[] = [];
     const seenNames = new Set<string>();
-
-    const TARGET_TOTAL = 18;
-    const TARGET_AVAILABLE = 14;
-    const TARGET_TAKEN = 4;
 
     // 1. Try to harvest from Groq if valid key is available
     if (effectiveKey && effectiveKey !== "placeholder") {

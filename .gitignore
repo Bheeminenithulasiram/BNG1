@@ -12,6 +12,8 @@ node_modules/
 /dist/
 /artifacts/api-server/dist/
 /artifacts/api-server/public/
+/lib/api-client-react/dist/
+*.tsbuildinfo
 *.mjs.map
 
 # Lock file — generated per-platform, causes cross-OS install failures
