@@ -169,6 +169,11 @@ export class LinkedInChecker extends AvailabilityChecker {
 
       if (resp.status === 200) return "taken";
       if (resp.status === 404) return "available";
+      
+      // LinkedIn redirects unauthenticated hits to authwall (302) or blocks (999/403) for existing companies
+      if (resp.status === 301 || resp.status === 302 || resp.status === 403 || resp.status === 999) {
+        return "taken";
+      }
     } catch {
       // Fall through
     }
@@ -213,6 +218,9 @@ export class InstagramChecker extends AvailabilityChecker {
       if (resp.status === 404) return "available";
 
       if (resp.status === 200) {
+        if (resp.url && resp.url.includes("accounts/login")) {
+          return "unknown"; // Blocked/redirected to login page
+        }
         const text = await resp.text();
         if (
           text.includes("Page Not Found") ||
@@ -221,6 +229,7 @@ export class InstagramChecker extends AvailabilityChecker {
         ) {
           return "available";
         }
+        return "taken";
       }
     } catch {
       // Proceed to fallback
@@ -238,15 +247,11 @@ export class InstagramChecker extends AvailabilityChecker {
         }
       );
       if (oembedResp.status === 404) return "available";
+      if (oembedResp.status === 200) return "taken";
     } catch {
-      // Proceed to fallback
+      // Ignore
     }
 
-    // Heuristic Fallback: Unique generated brand handles (>5 chars) default to available
-    if (cleanUser.length >= 5) {
-      return "available";
-    }
-
-    return "taken";
+    return "unknown";
   }
 }
