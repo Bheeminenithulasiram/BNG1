@@ -21,10 +21,12 @@ type BrandSuggestion = {
 };
 
 function cleanName(value: string): string {
+  const stopWords = new Set(["a", "an", "the", "of", "for", "to", "in", "on", "at", "by", "with", "my", "your", "our", "i", "e", "u", "is", "it", "and", "or", "so", "but"]);
   const cleaned = value
     .replace(/[^a-zA-Z0-9 ]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
+    .filter((word) => !stopWords.has(word.toLowerCase()))
     .slice(0, 2)
     .map((word) => word[0]?.toUpperCase() + word.slice(1).toLowerCase())
     .join("");
@@ -421,10 +423,26 @@ Respond ONLY with a valid JSON array:
       }
     }
 
+    // Deduplicate pools to prevent any repeating names
+    const uniqueAvailMap = new Map<string, BrandSuggestion>();
+    for (const item of availablePool) {
+      uniqueAvailMap.set(item.name.toLowerCase(), item);
+    }
+    const uniqueAvail = Array.from(uniqueAvailMap.values());
+
+    const uniqueTakenMap = new Map<string, BrandSuggestion>();
+    for (const item of takenPool) {
+      const lowerName = item.name.toLowerCase();
+      if (!uniqueAvailMap.has(lowerName)) {
+        uniqueTakenMap.set(lowerName, item);
+      }
+    }
+    const uniqueTaken = Array.from(uniqueTakenMap.values());
+
     // Build final list: EXACTLY 14 available and 4 taken
     const final: BrandSuggestion[] = [];
-    final.push(...availablePool.slice(0, TARGET_AVAILABLE));
-    final.push(...takenPool.slice(0, TARGET_TAKEN));
+    final.push(...uniqueAvail.slice(0, TARGET_AVAILABLE));
+    final.push(...uniqueTaken.slice(0, TARGET_TAKEN));
 
     // Shuffle final list
     for (let i = final.length - 1; i > 0; i--) {
@@ -441,8 +459,24 @@ Respond ONLY with a valid JSON array:
       const checkedAvail = await checkPool(availableCandidates.slice(0, TARGET_AVAILABLE + 10));
       const checkedTaken = await checkPool(takenCandidates.slice(0, TARGET_TAKEN + 5));
 
-      const finalAvail = checkedAvail.filter(item => item.status === "available").map(item => item.s).slice(0, TARGET_AVAILABLE);
-      const finalTaken = checkedTaken.filter(item => item.status !== "available").map(item => item.s).slice(0, TARGET_TAKEN);
+      const finalAvailRaw = checkedAvail.filter(item => item.status === "available").map(item => item.s);
+      const finalTakenRaw = checkedTaken.filter(item => item.status !== "available").map(item => item.s);
+
+      // Deduplicate fallback pools
+      const uniqueFallAvailMap = new Map<string, BrandSuggestion>();
+      for (const item of finalAvailRaw) {
+        uniqueFallAvailMap.set(item.name.toLowerCase(), item);
+      }
+      const finalAvail = Array.from(uniqueFallAvailMap.values());
+
+      const uniqueFallTakenMap = new Map<string, BrandSuggestion>();
+      for (const item of finalTakenRaw) {
+        const lowerName = item.name.toLowerCase();
+        if (!uniqueFallAvailMap.has(lowerName)) {
+          uniqueFallTakenMap.set(lowerName, item);
+        }
+      }
+      const finalTaken = Array.from(uniqueFallTakenMap.values());
 
       // Pad if still short
       const cleanSeed = cleanName(keywords || description) || "Brand";
