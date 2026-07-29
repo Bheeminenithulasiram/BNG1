@@ -8,20 +8,14 @@
 node_modules/
 
 # Build outputs
-public/
-dist/
+/public/
+/dist/
+/artifacts/api-server/dist/
+/artifacts/api-server/public/
 *.mjs.map
 
 # Lock file — generated per-platform, causes cross-OS install failures
 package-lock.json
-
-# Dependencies
-node_modules/
-
-# Build outputs
-public/
-dist/
-*.mjs.map
 
 # Logs
 *.log
