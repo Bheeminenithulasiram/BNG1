@@ -12,6 +12,17 @@ public/
 dist/
 *.mjs.map
 
+# Lock file — generated per-platform, causes cross-OS install failures
+package-lock.json
+
+# Dependencies
+node_modules/
+
+# Build outputs
+public/
+dist/
+*.mjs.map
+
 # Logs
 *.log
 npm-debug.log*
