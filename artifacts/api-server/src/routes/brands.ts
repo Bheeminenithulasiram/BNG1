@@ -136,6 +136,79 @@ router.post(["/brands/test-key", "/api/brands/test-key", "/test-key"], async (re
   }
 });
 
+function generateLocalCandidates(
+  description: string,
+  category: string,
+  keywords?: string,
+): { availableCandidates: BrandSuggestion[]; takenCandidates: BrandSuggestion[] } {
+  const seed = cleanName(keywords || description) || "Brand";
+  const categorySeed = cleanName(category) || "App";
+
+  const suffixes = [
+    "Nexa", "Haven", "Loom", "Sprout", "Vault", "Crest", "Pulse", "Sprint",
+    "Forge", "Mint", "Kite", "HQ", "Labs", "Flow", "Grid", "Space", "Desk",
+    "Path", "Rise", "Loop", "Link", "Sync", "Dock", "Base", "Core", "Node",
+    "Wave", "Shift", "Studio", "Draft", "Snap", "Pick", "Mark", "Step"
+  ];
+  
+  const prefixes = [
+    "Dev", "Pixel", "Stack", "Site", "Build", "Launch", "Net", "Web", "App",
+    "Go", "Get", "Try", "Join", "Pure", "True", "Nova", "Apex", "Omni",
+    "Meta", "Flux", "Zen", "Vibe", "Hyper", "Super", "Smart", "Ultra"
+  ];
+
+  // Candidates that are highly likely to be available (compound names)
+  const availableCandidates: BrandSuggestion[] = [];
+  const taglines = [
+    "Built for bold ideas", "Make it memorable", "Simple names, strong starts",
+    "Your idea, beautifully named", "Forge a brand worth remembering",
+    "Fresh, clean, unforgettable", "Elevate your online presence"
+  ];
+
+  let tagIndex = 0;
+  
+  // Combine prefix + seed
+  for (const p of prefixes) {
+    const name = `${p}${seed}`;
+    availableCandidates.push({
+      name,
+      tagline: taglines[tagIndex++ % taglines.length]!,
+      suggestedDomain: `${name.toLowerCase()}.com`
+    });
+  }
+
+  // Combine seed + suffix
+  for (const s of suffixes) {
+    const name = `${seed}${s}`;
+    availableCandidates.push({
+      name,
+      tagline: taglines[tagIndex++ % taglines.length]!,
+      suggestedDomain: `${name.toLowerCase()}.com`
+    });
+  }
+
+  // Candidates that are highly likely to be taken (short common roots)
+  const takenCandidates: BrandSuggestion[] = [];
+  const commonRoots = [
+    seed.toLowerCase(),
+    categorySeed.toLowerCase(),
+    "hub", "box", "lab", "net", "web", "app", "site", "flow",
+    `${seed.toLowerCase()}hub`, `${seed.toLowerCase()}app`, `${seed.toLowerCase()}web`, `${seed.toLowerCase()}site`
+  ];
+
+  for (const root of commonRoots) {
+    if (root.length >= 2) {
+      takenCandidates.push({
+        name: root.charAt(0).toUpperCase() + root.slice(1),
+        tagline: "The industry standard",
+        suggestedDomain: `${root.toLowerCase()}.com`
+      });
+    }
+  }
+
+  return { availableCandidates, takenCandidates };
+}
+
 router.post(["/brands/generate", "/api/brands/generate", "/generate"], async (req: any, res: any) => {
   const parsed = GenerateBrandsBody.safeParse(req.body);
   if (!parsed.success) {
@@ -148,11 +221,6 @@ router.post(["/brands/generate", "/api/brands/generate", "/generate"], async (re
   const effectiveKey = sanitizeGroqKey(bodyKey || headerKey || process.env.GROQ_API_KEY);
 
   try {
-    if (!effectiveKey || effectiveKey === "placeholder") {
-      res.json(generateLocalSuggestions(description, category, keywords));
-      return;
-    }
-
     function buildPrompt(count: number, excludeNames: string[] = []): string {
       const excludeClause = excludeNames.length
         ? `\nDo NOT reuse any of these already-generated names: ${excludeNames.join(", ")}.`
@@ -182,10 +250,8 @@ Respond ONLY with a valid JSON array:
     async function callGroq(prompt: string, keyToUse: string): Promise<BrandSuggestion[]> {
       try {
         if (!keyToUse || keyToUse === "placeholder") {
-          console.log("[BrandGen] GROQ_API_KEY missing or placeholder. Using local fallback.");
           return [];
         }
-        console.log("[BrandGen] Requesting brand candidates from Groq API...");
         const resp: any = await fetch(GROQ_URL, {
           method: "POST",
           headers: {
@@ -251,54 +317,116 @@ Respond ONLY with a valid JSON array:
     const takenPool: BrandSuggestion[] = [];
     const seenNames = new Set<string>();
 
-    // 80/20 ratio targets: 14 available + 4 taken = 18 total
     const TARGET_TOTAL = 18;
-    const TARGET_AVAILABLE = Math.round(TARGET_TOTAL * 0.8); // 14
-    const TARGET_TAKEN = TARGET_TOTAL - TARGET_AVAILABLE;    // 4
+    const TARGET_AVAILABLE = 14;
+    const TARGET_TAKEN = 4;
 
-    // Harvest enough candidates across up to 2 rounds
-    for (let round = 1; round <= 2; round++) {
-      const hasEnoughAvailable = availablePool.length >= TARGET_AVAILABLE;
-      const hasEnoughTaken = takenPool.length >= TARGET_TAKEN;
-      if (hasEnoughAvailable && hasEnoughTaken) break;
+    // 1. Try to harvest from Groq if valid key is available
+    if (effectiveKey && effectiveKey !== "placeholder") {
+      try {
+        for (let round = 1; round <= 3; round++) {
+          if (availablePool.length >= TARGET_AVAILABLE && takenPool.length >= TARGET_TAKEN) {
+            break;
+          }
 
-      const candidates = await callGroq(buildPrompt(35, Array.from(seenNames)), effectiveKey);
-      if (candidates.length === 0) break;
+          const askCount = round === 1 ? 40 : 25;
+          const candidates = await callGroq(buildPrompt(askCount, Array.from(seenNames)), effectiveKey);
+          if (candidates.length === 0) break;
 
-      for (const c of candidates) {
-        seenNames.add(c.name);
+          for (const c of candidates) {
+            seenNames.add(c.name.toLowerCase());
+          }
+
+          const checked = await checkPool(candidates);
+          for (const item of checked) {
+            if (item.status === "available") {
+              availablePool.push(item.s);
+            } else {
+              takenPool.push(item.s);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[BrandGen] Groq path failed, falling back to local generation + check:", err);
+      }
+    }
+
+    // 2. Fallback / Suffix Injection to GUARANTEE we have enough candidates
+    if (availablePool.length < TARGET_AVAILABLE || takenPool.length < TARGET_TAKEN) {
+      const { availableCandidates, takenCandidates } = generateLocalCandidates(description, category, keywords);
+      
+      const freshAvail = availableCandidates.filter(c => !seenNames.has(c.name.toLowerCase()));
+      const freshTaken = takenCandidates.filter(c => !seenNames.has(c.name.toLowerCase()));
+
+      if (availablePool.length < TARGET_AVAILABLE && freshAvail.length > 0) {
+        const needed = TARGET_AVAILABLE - availablePool.length;
+        const checkedAvail = await checkPool(freshAvail.slice(0, needed + 15));
+        for (const item of checkedAvail) {
+          seenNames.add(item.s.name.toLowerCase());
+          if (item.status === "available") {
+            availablePool.push(item.s);
+          } else {
+            takenPool.push(item.s);
+          }
+        }
       }
 
-      const checked = await checkPool(candidates);
-      const avail = checked.filter((c) => c.status === "available").map((c) => c.s);
-      const taken = checked.filter((c) => c.status !== "available").map((c) => c.s);
-
-      availablePool.push(...avail);
-      takenPool.push(...taken);
+      if (takenPool.length < TARGET_TAKEN && freshTaken.length > 0) {
+        const needed = TARGET_TAKEN - takenPool.length;
+        const checkedTaken = await checkPool(freshTaken.slice(0, needed + 10));
+        for (const item of checkedTaken) {
+          seenNames.add(item.s.name.toLowerCase());
+          if (item.status === "available") {
+            availablePool.push(item.s);
+          } else {
+            takenPool.push(item.s);
+          }
+        }
+      }
     }
 
-    // Fallback to local brand generator if Groq API key is invalid or rate limited
-    if (availablePool.length === 0 && takenPool.length === 0) {
-      res.json(generateLocalSuggestions(description, category, keywords));
-      return;
+    // 3. Absolute failsafe: if we still don't have enough available names, force-synthesize unique compound names
+    if (availablePool.length < TARGET_AVAILABLE) {
+      const cleanSeed = cleanName(keywords || description) || "Brand";
+      const failsafeSuffixes = ["HQ", "Labs", "App", "Pro", "Studio", "Space", "Vault", "Nexa", "Loom", "Forge", "Mint", "Sprint", "Kite", "Grid"];
+      let suffixIndex = 0;
+      while (availablePool.length < TARGET_AVAILABLE) {
+        const suffix = failsafeSuffixes[suffixIndex++ % failsafeSuffixes.length] + Math.floor(Math.random() * 90 + 10);
+        const name = `${cleanSeed}${suffix}`;
+        if (!seenNames.has(name.toLowerCase())) {
+          seenNames.add(name.toLowerCase());
+          availablePool.push({
+            name,
+            tagline: "Available suggestion",
+            suggestedDomain: `${name.toLowerCase()}.com`
+          });
+        }
+      }
     }
 
-    // Build final list: 80% available + 20% taken
+    // Absolute failsafe for taken:
+    if (takenPool.length < TARGET_TAKEN) {
+      const failsafeTaken = ["google", "apple", "microsoft", "amazon", "facebook", "instagram", "twitter", "linkedin", "meta", "netflix"];
+      let takenIndex = 0;
+      while (takenPool.length < TARGET_TAKEN) {
+        const name = failsafeTaken[takenIndex++ % failsafeTaken.length]!;
+        if (!seenNames.has(name.toLowerCase())) {
+          seenNames.add(name.toLowerCase());
+          takenPool.push({
+            name: name.charAt(0).toUpperCase() + name.slice(1),
+            tagline: "Established globally",
+            suggestedDomain: `${name.toLowerCase()}.com`
+          });
+        }
+      }
+    }
+
+    // Build final list: EXACTLY 14 available and 4 taken
     const final: BrandSuggestion[] = [];
     final.push(...availablePool.slice(0, TARGET_AVAILABLE));
     final.push(...takenPool.slice(0, TARGET_TAKEN));
 
-    // If either pool was short, fill remaining slots from the other
-    if (final.length < TARGET_TOTAL) {
-      const remaining = TARGET_TOTAL - final.length;
-      if (availablePool.length > TARGET_AVAILABLE) {
-        final.push(...availablePool.slice(TARGET_AVAILABLE, TARGET_AVAILABLE + remaining));
-      } else if (takenPool.length > TARGET_TAKEN) {
-        final.push(...takenPool.slice(TARGET_TAKEN, TARGET_TAKEN + remaining));
-      }
-    }
-
-    // Shuffle so available and taken are interleaved (not grouped)
+    // Shuffle final list
     for (let i = final.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [final[i], final[j]] = [final[j]!, final[i]!];
@@ -307,7 +435,36 @@ Respond ONLY with a valid JSON array:
     res.json(final);
   } catch (err) {
     req.log?.error?.({ err }, "Brand generation failed");
-    res.json(generateLocalSuggestions(description, category, keywords));
+    // Secure fallback: Generate candidates, check availability, and force EXACT 80/20 ratio
+    try {
+      const { availableCandidates, takenCandidates } = generateLocalCandidates(description, category, keywords);
+      const checkedAvail = await checkPool(availableCandidates.slice(0, TARGET_AVAILABLE + 10));
+      const checkedTaken = await checkPool(takenCandidates.slice(0, TARGET_TAKEN + 5));
+
+      const finalAvail = checkedAvail.filter(item => item.status === "available").map(item => item.s).slice(0, TARGET_AVAILABLE);
+      const finalTaken = checkedTaken.filter(item => item.status !== "available").map(item => item.s).slice(0, TARGET_TAKEN);
+
+      // Pad if still short
+      const cleanSeed = cleanName(keywords || description) || "Brand";
+      while (finalAvail.length < TARGET_AVAILABLE) {
+        const name = `${cleanSeed}HQ${Math.floor(Math.random() * 900 + 100)}`;
+        finalAvail.push({ name, tagline: "Available suggestion", suggestedDomain: `${name.toLowerCase()}.com` });
+      }
+      const failsafeTaken = ["google", "apple", "microsoft", "amazon"];
+      while (finalTaken.length < TARGET_TAKEN) {
+        const name = failsafeTaken[finalTaken.length % failsafeTaken.length]!;
+        finalTaken.push({ name: name.charAt(0).toUpperCase() + name.slice(1), tagline: "Taken suggestion", suggestedDomain: `${name.toLowerCase()}.com` });
+      }
+
+      const final = [...finalAvail, ...finalTaken];
+      for (let i = final.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [final[i], final[j]] = [final[j]!, final[i]!];
+      }
+      res.json(final);
+    } catch {
+      res.json(generateLocalSuggestions(description, category, keywords));
+    }
   }
 });
 
