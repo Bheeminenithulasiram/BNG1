@@ -4,8 +4,12 @@ import { HealthCheckResponse } from "@workspace/api-client-react";
 const router: IRouter = Router();
 
 router.get(["/healthz", "/api/healthz"], (_req: any, res: any) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
+  const groqKey = process.env.GROQ_API_KEY;
+  res.json({
+    status: "ok",
+    hasGroqKey: Boolean(groqKey && groqKey !== "placeholder"),
+    groqKeyPrefix: groqKey ? `${groqKey.substring(0, 10)}...` : "none",
+  });
 });
 
 export default router;
