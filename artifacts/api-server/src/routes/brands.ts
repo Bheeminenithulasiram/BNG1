@@ -100,14 +100,43 @@ function generateLocalSuggestions(
   }));
 }
 
-function hasGroqApiKey(): boolean {
-  return Boolean(GROQ_API_KEY && GROQ_API_KEY !== "placeholder");
+function hasApiKey(): boolean {
+  return Boolean(
+    (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "placeholder") ||
+    (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "placeholder")
+  );
 }
 
 router.post(["/brands/test-key", "/api/brands/test-key", "/test-key"], async (req: any, res: any) => {
-  const key = req.body?.groqApiKey || (req.headers["x-groq-api-key"] as string) || process.env.GROQ_API_KEY || "";
-  if (!key || key === "placeholder") {
-    res.status(400).json({ ok: false, error: "No GROQ API key provided." });
+  const geminiKey = req.body?.geminiApiKey || (req.headers["x-gemini-api-key"] as string) || process.env.GEMINI_API_KEY || "";
+  const groqKey = req.body?.groqApiKey || (req.headers["x-groq-api-key"] as string) || process.env.GROQ_API_KEY || "";
+
+  if (geminiKey && geminiKey !== "placeholder") {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey.trim()}`;
+      const resp: any = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "Hello!" }] }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        res.status(400).json({ ok: false, error: `Gemini API Error (${resp.status}): ${errText}` });
+        return;
+      }
+      res.json({ ok: true, message: "Gemini API key verified successfully! (gemini-2.5-flash)" });
+      return;
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || "Failed to connect to Gemini API" });
+      return;
+    }
+  }
+
+  if (!groqKey || groqKey === "placeholder") {
+    res.status(400).json({ ok: false, error: "No API key provided." });
     return;
   }
 
@@ -115,11 +144,11 @@ router.post(["/brands/test-key", "/api/brands/test-key", "/test-key"], async (re
     const resp: any = await fetch(GROQ_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${key.trim()}`,
+        Authorization: `Bearer ${groqKey.trim()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         temperature: 0.1,
         max_tokens: 20,
         messages: [{ role: "user", content: "Reply with JSON: {\"ok\":true}" }],
@@ -128,11 +157,11 @@ router.post(["/brands/test-key", "/api/brands/test-key", "/test-key"], async (re
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
-      res.status(400).json({ ok: false, error: `Groq API Error (${resp.status}): ${errText || "Invalid key or rate limit"}` });
+      res.status(400).json({ ok: false, error: `Groq API Error (${resp.status}): ${errText}` });
       return;
     }
 
-    res.json({ ok: true, message: "Groq API key verified successfully! (llama-3.3-70b-versatile)" });
+    res.json({ ok: true, message: "Groq API key verified successfully! (llama-3.1-8b-instant)" });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Failed to connect to Groq API" });
   }
@@ -218,9 +247,11 @@ router.post(["/brands/generate", "/api/brands/generate", "/generate"], async (re
     return;
   }
 
-  const { description, category, keywords, groqApiKey: bodyKey } = parsed.data;
+  const { description, category, keywords, groqApiKey: bodyKey, geminiApiKey: bodyGeminiKey } = parsed.data;
   const headerKey = (req.headers["x-groq-api-key"] as string) || "";
+  const headerGeminiKey = (req.headers["x-gemini-api-key"] as string) || "";
   const effectiveKey = sanitizeGroqKey(bodyKey || headerKey || process.env.GROQ_API_KEY);
+  const effectiveGeminiKey = (bodyGeminiKey || headerGeminiKey || process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 
   const domainChecker = new DomainChecker(2000);
 
@@ -276,7 +307,7 @@ Respond ONLY with a valid JSON array:
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "llama-3.1-8b-instant",
             temperature: 0.9,
             max_tokens: 1500,
             messages: [
@@ -302,6 +333,9 @@ Respond ONLY with a valid JSON array:
           choices?: { message?: { content?: string } }[];
         };
         const raw = json.choices?.[0]?.message?.content ?? "[]";
+        try {
+          require("fs").writeFileSync("groq_error.log", `Raw Content: ${raw}\n`);
+        } catch {}
         
         // Robust JSON extraction
         const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
@@ -324,13 +358,102 @@ Respond ONLY with a valid JSON array:
         return [];
       }
     }
+    async function callGemini(prompt: string, keyToUse: string): Promise<BrandSuggestion[]> {
+      try {
+        if (!keyToUse || keyToUse === "placeholder") {
+          return [];
+        }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keyToUse}`;
+        const resp: any = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    name: { type: "STRING" },
+                    tagline: { type: "STRING" },
+                    suggestedDomain: { type: "STRING" }
+                  },
+                  required: ["name", "tagline", "suggestedDomain"]
+                }
+              }
+            }
+          }),
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          console.warn(`[BrandGen] Gemini API response status (${resp.status}): ${errText}`);
+          try {
+            require("fs").writeFileSync("gemini_error.log", `Status: ${resp.status}\nBody: ${errText}\n`);
+          } catch {}
+          return [];
+        }
+
+        const json = await resp.json();
+        const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err: any) {
+        console.error("[BrandGen] Error calling Gemini API:", err);
+        try {
+          require("fs").writeFileSync("gemini_error.log", `Exception: ${err?.message || err}\n`);
+        } catch {}
+        return [];
+      }
+    }
 
     const availablePool: BrandSuggestion[] = [];
     const takenPool: BrandSuggestion[] = [];
     const seenNames = new Set<string>();
 
-    // 1. Try to harvest from Groq if valid key is available
-    if (effectiveKey && effectiveKey !== "placeholder") {
+    let usedAI = false;
+
+    // 1. Try to harvest from Gemini if valid key is available
+    if (effectiveGeminiKey && effectiveGeminiKey !== "placeholder") {
+      try {
+        for (let round = 1; round <= 3; round++) {
+          if (availablePool.length >= TARGET_AVAILABLE && takenPool.length >= TARGET_TAKEN) {
+            break;
+          }
+
+          const askCount = round === 1 ? 40 : 25;
+          const candidates = await callGemini(buildPrompt(askCount, Array.from(seenNames)), effectiveGeminiKey);
+          if (candidates.length === 0) break;
+
+          usedAI = true;
+          for (const c of candidates) {
+            seenNames.add(c.name.toLowerCase());
+          }
+
+          const checked = await checkPool(candidates);
+          for (const item of checked) {
+            if (item.status === "available") {
+              availablePool.push(item.s);
+            } else {
+              takenPool.push(item.s);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[BrandGen] Gemini path failed, falling back to Groq:", err);
+      }
+    }
+
+    // 2. Try to harvest from Groq if Gemini wasn't used/available
+    if (!usedAI && effectiveKey && effectiveKey !== "placeholder") {
       try {
         for (let round = 1; round <= 3; round++) {
           if (availablePool.length >= TARGET_AVAILABLE && takenPool.length >= TARGET_TAKEN) {
@@ -341,6 +464,7 @@ Respond ONLY with a valid JSON array:
           const candidates = await callGroq(buildPrompt(askCount, Array.from(seenNames)), effectiveKey);
           if (candidates.length === 0) break;
 
+          usedAI = true;
           for (const c of candidates) {
             seenNames.add(c.name.toLowerCase());
           }

@@ -12,6 +12,7 @@ export const GenerateBrandsBody = z.object({
   category: z.string().min(1),
   keywords: z.string().optional(),
   groqApiKey: z.string().optional(),
+  geminiApiKey: z.string().optional(),
 });
 
 export const TestGroqKeyBody = z.object({
