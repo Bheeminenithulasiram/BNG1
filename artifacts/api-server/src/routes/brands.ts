@@ -4,13 +4,11 @@ import { DomainChecker } from "../services/availability";
 
 const router = Router();
 
-const DEFAULT_GROQ_KEY = process.env.GROQ_API_KEY || "";
-
 function sanitizeGroqKey(rawKey?: string): string {
-  if (!rawKey) return DEFAULT_GROQ_KEY;
+  if (!rawKey) return "";
   const match = rawKey.match(/(gsk_[A-Za-z0-9]+)/);
   if (match) return match[1];
-  return rawKey.trim() || DEFAULT_GROQ_KEY;
+  return rawKey.trim();
 }
 
 const GROQ_API_KEY = sanitizeGroqKey(process.env.GROQ_API_KEY);
@@ -166,10 +164,10 @@ CRITICAL LANGUAGE REQUIREMENT:
 - All generated names MUST be in ENGLISH only.
 - Do NOT use non-English words, regional transliterations, Sanskrit, Hindi, Latin, or foreign language roots.
 
-HIGH DOMAIN AVAILABILITY REQUIREMENT (TARGET AT LEAST 15-18 AVAILABLE .COM DOMAINS):
-- Simple 1-word terms or basic common combinations (webcraft, sitely, launchpad, digitalhub) ARE TAKEN ON .COM. DO NOT GENERATE THEM.
-- Generate CREATIVE, DISTINCTIVE English compound names, 2-word combinations, or modern English suffix/prefix variations.
-- USE THESE PATTERNS: BuildNexa, SiteHaven, StackNexa, Websprout, Siteloom, Pixelsprout, Devnexa, Webkraf, Devsprout, SitevibeHQ, DevnexusPro, PageloomCo.
+DOMAIN AVAILABILITY MIX (TARGET ~80% AVAILABLE, ~20% TAKEN):
+- Generate a diverse mix: mostly CREATIVE, DISTINCTIVE compound names (likely available) but also some common 1-word names (webcraft, launchpad, digitalhub) which tend to be taken.
+- Use creative patterns for available names: BuildNexa, SiteHaven, StackNexa, Websprout, Siteloom, Pixelsprout, Devnexa, Webkraf, Devsprout, SitevibeHQ, DevnexusPro, PageloomCo.
+- Include a few short/common names like "LaunchPad", "WebCraft", "SiteHub" which are likely already registered.
 ${excludeClause}
 
 Generate exactly ${count} brand name candidates for:
@@ -253,9 +251,16 @@ Respond ONLY with a valid JSON array:
     const takenPool: BrandSuggestion[] = [];
     const seenNames = new Set<string>();
 
-    // Fast 2-round harvester optimized for Serverless < 3s latency
+    // 80/20 ratio targets: 14 available + 4 taken = 18 total
+    const TARGET_TOTAL = 18;
+    const TARGET_AVAILABLE = Math.round(TARGET_TOTAL * 0.8); // 14
+    const TARGET_TAKEN = TARGET_TOTAL - TARGET_AVAILABLE;    // 4
+
+    // Harvest enough candidates across up to 2 rounds
     for (let round = 1; round <= 2; round++) {
-      if (availablePool.length >= 18) break;
+      const hasEnoughAvailable = availablePool.length >= TARGET_AVAILABLE;
+      const hasEnoughTaken = takenPool.length >= TARGET_TAKEN;
+      if (hasEnoughAvailable && hasEnoughTaken) break;
 
       const candidates = await callGroq(buildPrompt(35, Array.from(seenNames)), effectiveKey);
       if (candidates.length === 0) break;
@@ -278,11 +283,25 @@ Respond ONLY with a valid JSON array:
       return;
     }
 
+    // Build final list: 80% available + 20% taken
     const final: BrandSuggestion[] = [];
-    final.push(...availablePool.slice(0, 18));
+    final.push(...availablePool.slice(0, TARGET_AVAILABLE));
+    final.push(...takenPool.slice(0, TARGET_TAKEN));
 
-    if (final.length < 18) {
-      final.push(...takenPool.slice(0, 18 - final.length));
+    // If either pool was short, fill remaining slots from the other
+    if (final.length < TARGET_TOTAL) {
+      const remaining = TARGET_TOTAL - final.length;
+      if (availablePool.length > TARGET_AVAILABLE) {
+        final.push(...availablePool.slice(TARGET_AVAILABLE, TARGET_AVAILABLE + remaining));
+      } else if (takenPool.length > TARGET_TAKEN) {
+        final.push(...takenPool.slice(TARGET_TAKEN, TARGET_TAKEN + remaining));
+      }
+    }
+
+    // Shuffle so available and taken are interleaved (not grouped)
+    for (let i = final.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [final[i], final[j]] = [final[j]!, final[i]!];
     }
 
     res.json(final);

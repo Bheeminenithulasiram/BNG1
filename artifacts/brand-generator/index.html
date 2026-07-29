@@ -1,25 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <script>
-      (function() {
-        try {
-          var origFetch = window.fetch;
-          Object.defineProperty(window, 'fetch', {
-            get: function() {
-              return origFetch;
-            },
-            set: function(v) {
-              origFetch = v;
-            },
-            configurable: true,
-            enumerable: true
-          });
-        } catch (e) {
-          // ignore error
-        }
-      })();
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>BrandGen — AI Brand Name Generator</title>

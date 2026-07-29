@@ -4,6 +4,3 @@ public
 .codex-run
 *.tsbuildinfo
 .env
-.env.local
-.env.*.local
-*.pem
